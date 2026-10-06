@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delta-V: Mission Architect</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #070b17; color: #e8ecf5; margin: 0; padding: 12px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
+  .tag { color: #8f9bbd; font-size: 13px; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 10px; border: 2px solid #1f2a4d; background: #000; }
+
+  .panel { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .card { background: #121a33; border: 1px solid #1f2a4d; border-radius: 10px; padding: 10px 12px; }
+  .card h2 { margin: 0 0 6px 0; font-size: 15px; color: #ffd166; }
+  label { display: block; margin-top: 8px; font-size: 13px; color: #c5cee6; }
+  select, input[type=range] { width: 100%; }
+  select { padding: 5px; background: #070b17; color: #e8ecf5; border: 1px solid #33406b; border-radius: 6px; }
+  .val { color: #ffd166; font-weight: bold; }
+
+  .targets { display: flex; gap: 6px; margin-top: 6px; }
+  .targetBtn { flex: 1; padding: 8px 4px; border-radius: 8px; border: 2px solid #33406b; background: #070b17; color: #e8ecf5; cursor: pointer; font-weight: bold; }
+  .targetBtn.active { border-color: #06d6a0; background: #0a3d33; }
+  .targetBtn:disabled { opacity: 0.5; cursor: default; }
+
+  .stat { font-size: 13px; margin: 3px 0; display: flex; justify-content: space-between; }
+  .good { color: #06d6a0; font-weight: bold; }
+  .bad  { color: #ef476f; font-weight: bold; }
+
+  #launchBtn { width: 100%; margin-top: 8px; padding: 14px; font-size: 18px; font-weight: bold; letter-spacing: 2px;
+               color: #fff; background: #e63946; border: none; border-radius: 10px; cursor: pointer; }
+  #launchBtn:hover { background: #ff4d5a; }
+  #launchBtn:disabled { background: #444b63; cursor: default; }
+  .note { font-size: 11px; color: #7f8bb0; margin-top: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>DELTA-V: MISSION ARCHITECT</h1>
+    <span class="tag">Design a 2-stage rocket. Launch it. Reach orbit, the Moon or Mars.</span>
+  </header>
+
+  <canvas id="screen" width="960" height="540"></canvas>
+
+  <div class="panel">
+
+    <div class="card">
+      <h2>1. Choose your mission</h2>
+      <div class="targets">
+        <button class="targetBtn" data-index="0">Orbit</button>
+        <button class="targetBtn active" data-index="1">Moon</button>
+        <button class="targetBtn" data-index="2">Mars</button>
+      </div>
+      <button id="launchBtn">LAUNCH</button>
+    </div>
+
+    <div class="card">
+      <h2>2. Stage 1 (booster)</h2>
+      <label>Engine <select id="engine1"></select></label>
+      <label>Engines: <span class="val" id="count1Label"></span>
+        <input type="range" id="count1" min="1" max="12" value="6"></label>
+      <label>Fuel (tonnes): <span class="val" id="fuel1Label"></span>
+        <input type="range" id="fuel1" min="20" max="800" value="400"></label>
+    </div>
+
+    <div class="card">
+      <h2>3. Stage 2 (upper stage)</h2>
+      <label>Engine <select id="engine2"></select></label>
+      <label>Engines: <span class="val" id="count2Label"></span>
+        <input type="range" id="count2" min="1" max="6" value="1"></label>
+      <label>Fuel (tonnes): <span class="val" id="fuel2Label"></span>
+        <input type="range" id="fuel2" min="5" max="200" value="60"></label>
+    </div>
+
+    <div class="card">
+      <h2>4. Payload</h2>
+      <label>Payload (tonnes): <span class="val" id="payloadLabel"></span>
+        <input type="range" id="payload" min="1" max="50" value="8"></label>
+      <div class="note">A heavier payload leaves less delta-v for the trip.</div>
+    </div>
+
+    <div class="card">
+      <h2>Design check</h2>
+      <div class="stat"><span>Liftoff mass</span><span class="val"><span id="sLiftoff"></span> t</span></div>
+      <div class="stat"><span>Thrust-to-weight (needs &gt; 1)</span><span id="sTwr"></span></div>
+      <div class="stat"><span>Stage 1 delta-v</span><span class="val"><span id="sDv1"></span> m/s</span></div>
+      <div class="stat"><span>Stage 2 delta-v</span><span class="val"><span id="sDv2"></span> m/s</span></div>
+      <div class="stat"><span>Total delta-v</span><span class="val"><span id="sTotal"></span> m/s</span></div>
+      <div class="stat"><span>This rocket can reach</span><span id="sReach"></span></div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    Physics: delta_v = Isp x 9.81 x ln(start_mass / end_mass) (Tsiolkovsky rocket equation), applied to each stage.
+    Engine values are approximate public figures; delta-v targets are rough textbook numbers from Earth's surface
+    (orbit about 9,400 m/s, Moon about 12,500 m/s, Mars about 13,000 m/s).
+    Data sources: NASA Planetary Fact Sheet (NSSDCA) and NASA Technical Reports Server (NTRS).
+  </div>
+
+</div>
+
+<script>
+// =====================================================================
+// 1. DATA  (edit these numbers to change the game)
+// =====================================================================
+// mass in tonnes, thrust in kilonewtons (kN), isp in seconds
+var ENGINES = [
+  { name: "Merlin 1D (kerosene)",   mass: 0.47, thrust: 845,  isp: 300, color: "#9aa5b8" },
+  { name: "Raptor (methane)",       mass: 1.6,  thrust: 2300, isp: 330, color: "#c8cdd6" },
+  { name: "RS-25 (hydrogen)",       mass: 3.5,  thrust: 2280, isp: 440, color: "#b7864b" },
+  { name: "RL10 (hydrogen, upper)", mass: 0.3,  thrust: 110,  isp: 465, color: "#8fb7c9" }
+];
+
+// total delta-v needed from the ground (m/s)
+var TARGETS = [
+  { name: "EARTH ORBIT", short: "Orbit", needed: 9400 },
+  { name: "THE MOON",    short: "Moon",  needed: 12500 },
+  { name: "MARS",        short: "Mars",  needed: 13000 }
+];
+
+var G0 = 9.81;                  // gravity constant in the rocket equation
+var STRUCTURE_FRACTION = 0.08;  // tank weight = 8% of the fuel weight
+var ORBIT_DV = 9400;            // delta-v needed to reach low Earth orbit
+
+// Flight timing (seconds)
+var COUNTDOWN_SECONDS = 3.6;
+var STAGE1_BURN = 6;
+var SEPARATION_PAUSE = 1.2;
+var STAGE2_BURN = 7;
+
+// Screen layout (canvas is 960 x 540)
+var W = 960, H = 540;
+var GROUND_Y = 470;
+var ROCKET_X = 480;
+
+// =====================================================================
+// 2. SMALL HELPERS
+// =====================================================================
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function formatNumber(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function el(id) { return document.getElementById(id); }
+
+// mixes two [r,g,b] colours; t = 0 gives a, t = 1 gives b
+function mixColor(a, b, t) {
+  return "rgb(" + Math.round(lerp(a[0], b[0], t)) + "," +
+                  Math.round(lerp(a[1], b[1], t)) + "," +
+                  Math.round(lerp(a[2], b[2], t)) + ")";
+}
+
+// =====================================================================
+// 3. PHYSICS  (same maths as before)
+// =====================================================================
+function calculateDeltaV(isp, startMass, endMass) {
+  return isp * G0 * Math.log(startMass / endMass);
+}
+
+// One stage. massAbove = everything this stage has to carry.
+function calculateStage(engine, engineCount, fuelMass, massAbove) {
+  var dryMass   = engine.mass * engineCount + fuelMass * STRUCTURE_FRACTION;
+  var startMass = massAbove + dryMass + fuelMass;
+  var endMass   = massAbove + dryMass;
+  return {
+    startMass: startMass,
+    deltaV: calculateDeltaV(engine.isp, startMass, endMass),
+    totalThrust: engine.thrust * engineCount
+  };
+}
+
+function readControls() {
+  return {
+    engine1: ENGINES[Number(el("engine1").value)],
+    engine2: ENGINES[Number(el("engine2").value)],
+    count1:  Number(el("count1").value),
+    count2:  Number(el("count2").value),
+    fuel1:   Number(el("fuel1").value),
+    fuel2:   Number(el("fuel2").value),
+    payload: Number(el("payload").value)
+  };
+}
+
+function computeDesign(c) {
+  var stage2 = calculateStage(c.engine2, c.count2, c.fuel2, c.payload);
+  var stage1 = calculateStage(c.engine1, c.count1, c.fuel1, stage2.startMass);
+  return {
+    controls: c,
+    stage1: stage1,
+    stage2: stage2,
+    total: stage1.deltaV + stage2.deltaV,
+    twr: stage1.totalThrust / (stage1.startMass * G0),
+    liftoffMass: stage1.startMass
+  };
+}
+
+// Where is the rocket at time t of the flight? (delta-v grows while an engine burns)
+function flightState(t, design) {
+  var stage2Start = STAGE1_BURN + SEPARATION_PAUSE;
+  var endTime = stage2Start + STAGE2_BURN;
+  var dv1 = design.stage1.deltaV;
+  var dv2 = design.stage2.deltaV;
+
+  if (t < STAGE1_BURN)  return { dv: dv1 * (t / STAGE1_BURN), burning: 1, label: "STAGE 1 BURN" };
+  if (t < stage2Start)  return { dv: dv1, burning: 0, label: "STAGE SEPARATION" };
+  if (t < endTime)      return { dv: dv1 + dv2 * ((t - stage2Start) / STAGE2_BURN), burning: 2, label: "STAGE 2 BURN" };
+  return { dv: dv1 + dv2, burning: 0, label: "ENGINES OFF" };
+}
+
+// How high (in screen pixels of "altitude") the rocket looks for a given delta-v.
+// The power makes it start slow and speed up, like a real launch.
+function altFromDv(dv) {
+  return Math.pow(clamp(dv / ORBIT_DV, 0, 1), 1.5) * 3000;
+}
+
+// =====================================================================
+// 4. GAME STATE
+// =====================================================================
+var canvas = el("screen");
+var ctx = canvas.getContext("2d");
+
+var game = {
+  phase: "build",        // build -> countdown -> flight -> result
+  outcome: null,         // success | orbit | crash | noliftoff
+  targetIndex: 1,
+  design: null,
+  clock: 0,              // seconds since page load (used for twinkling)
+  timer: 0,              // seconds inside the current phase
+  dv: 0,                 // delta-v gained so far
+  altPx: 0,              // how high the rocket looks
+  altSpeed: 0,
+  burning: 0,            // 0 none, 1 stage 1, 2 stage 2
+  label: "",
+  separated: false,
+  debris: null,
+  flashT: 0,
+  drift: 0,
+  spin: 0,
+  fallV: 0,
+  crashed: false,
+  crashTime: 0,
+  smokeAcc: 0,
+  smoke: [],
+  sparks: [],
+  confetti: []
+};
+
+// background objects made once
+var stars = [];
+for (var i = 0; i < 140; i++) {
+  stars.push({ x: Math.random() * W, y: Math.random() * H, r: rand(0.6, 1.8), speed: rand(1, 4), phase: rand(0, 6.28) });
+}
+var clouds = [];
+for (var j = 0; j < 8; j++) {
+  clouds.push({ x: rand(0, W), y: rand(0, H), size: rand(0.7, 1.5), speed: rand(0.5, 0.9) });
+}
+
+// =====================================================================
+// 5. LAUNCH CONTROL
+// =====================================================================
+function startLaunch() {
+  var design = computeDesign(readControls());
+  var needed = TARGETS[game.targetIndex].needed;
+
+  // decide in advance how this flight will end
+  if (design.twr <= 1)              game.outcome = "noliftoff";
+  else if (design.total >= needed)  game.outcome = "success";
+  else if (design.total >= ORBIT_DV) game.outcome = "orbit";
+  else                              game.outcome = "crash";
+
+  game.design = design;
+  game.phase = "countdown";
+  game.timer = 0;
+  game.dv = 0;
+  game.altPx = 0;
+  game.altSpeed = 0;
+  game.burning = 0;
+  game.label = (game.outcome === "noliftoff") ? "ENGINES TOO WEAK" : "";
+  game.separated = false;
+  game.debris = null;
+  game.flashT = 0;
+  game.drift = 0;
+  game.spin = 0;
+  game.fallV = 0;
+  game.crashed = false;
+  game.crashTime = 0;
+  game.smoke = [];
+  game.sparks = [];
+  game.confetti = [];
+  setControlsEnabled(false);
+  updateButtons();
+}
+
+function backToDesign() {
+  game.phase = "build";
+  game.outcome = null;
+  game.timer = 0;
+  game.dv = 0;
+  game.altPx = 0;
+  game.drift = 0;
+  game.spin = 0;
+  game.smoke = [];
+  game.sparks = [];
+  game.confetti = [];
+  game.debris = null;
+  game.separated = false;
+  setControlsEnabled(true);
+  updateButtons();
+}
+
+function separateStage() {
+  game.separated = true;
+  game.flashT = 0.35;
+  game.debris = {
+    x: ROCKET_X + game.drift,
+    y: GROUND_Y - Math.min(game.altPx, 220),
+    tilt: currentTilt(),
+    vx: -25,
+    vy: 30,
+    spinSpeed: rand(-0.6, 0.6),
+    angle: 0
+  };
+}
+
+function finishFlight() {
+  game.phase = "result";
+  game.timer = 0;
+  game.burning = 0;
+  if (game.outcome === "success") {
+    game.dv = TARGETS[game.targetIndex].needed;
+    spawnConfetti();
+  } else {
+    game.dv = game.design.total;
+  }
+  game.label = "ENGINES OFF";
+}
+
+// =====================================================================
+// 6. UPDATE (runs every frame)
+// =====================================================================
+function update(dt) {
+  game.clock += dt;
+  var previousAlt = game.altPx;
+
+  if (game.phase === "build") {
+    game.design = computeDesign(readControls());
+    game.dv = 0;
+    game.altPx = 0;
+  }
+  else if (game.phase === "countdown") {
+    game.timer += dt;
+    if (game.timer >= COUNTDOWN_SECONDS) {
+      game.timer = 0;
+      game.phase = (game.outcome === "noliftoff") ? "result" : "flight";
+    }
+  }
+  else if (game.phase === "flight") {
+    updateFlight(dt);
+  }
+  else if (game.phase === "result") {
+    updateResult(dt);
+  }
+
+  game.altSpeed = (dt > 0) ? (game.altPx - previousAlt) / dt : 0;
+  if (game.flashT > 0) game.flashT -= dt;
+
+  updateDebris(dt);
+  emitExhaust(dt);
+  updateParticles(dt);
+}
+
+function updateFlight(dt) {
+  game.timer += dt;
+  var state = flightState(game.timer, game.design);
+  game.dv = state.dv;
+  game.burning = state.burning;
+  game.label = state.label;
+  game.altPx = altFromDv(game.dv);
+
+  if (!game.separated && game.timer >= STAGE1_BURN) separateStage();
+
+  var needed = TARGETS[game.targetIndex].needed;
+  if (game.outcome === "success" && game.dv >= needed) {
+    finishFlight();
+    return;
+  }
+  if (game.timer >= STAGE1_BURN + SEPARATION_PAUSE + STAGE2_BURN) {
+    finishFlight();
+  }
+}
+
+function updateResult(dt) {
+  game.timer += dt;
+
+  if (game.outcome === "crash" && !game.crashed) {
+    // the rocket ran out of fuel below orbit: it falls back down
+    game.fallV += 700 * dt;
+    game.altPx -= game.fallV * dt;
+    game.spin += 2.2 * dt;
+    if (game.altPx <= 0) {
+      game.altPx = 0;
+      game.crashed = true;
+      game.crashTime = game.timer;
+      spawnExplosion(ROCKET_X + game.drift, GROUND_Y);
+    }
+  }
+  else if (game.outcome === "orbit" || game.outcome === "success") {
+    game.drift += 14 * dt;      // slowly coasting
+  }
+}
+
+function updateDebris(dt) {
+  if (!game.debris) return;
+  var d = game.debris;
+  d.vy += 260 * dt;
+  d.x += d.vx * dt;
+  d.y += d.vy * dt;
+  d.angle += d.spinSpeed * dt;
+  if (d.y > H + 400) game.debris = null;
+}
+
+// ---------- particles: smoke, sparks, confetti ----------
+function currentTilt() {
+  // the rocket leans over as it climbs (a "gravity turn") and leans toward the target after orbit
+  var climbTurn = clamp((game.altPx - 300) / 2700, 0, 1) * 0.6;
+  var targetTurn = (game.dv > ORBIT_DV) ? clamp((game.dv - ORBIT_DV) / 3600, 0, 1) * 0.5 : 0;
+  var tilt = climbTurn + targetTurn;
+  if (game.outcome === "crash" && game.phase === "result") tilt += game.spin;
+  return tilt;
+}
+
+function flameOn() {
+  if (game.phase === "countdown") return game.timer > COUNTDOWN_SECONDS - 1.2;
+  if (game.phase === "flight") return game.burning > 0;
+  if (game.phase === "result" && game.outcome === "noliftoff") return game.timer < 2.5;
+  return false;
+}
+
+function rocketBaseY() { return GROUND_Y - Math.min(game.altPx, 220); }
+
+// which stage is producing the flame right now? (1 = bottom stage, 2 = upper stage)
+function activeStage() {
+  if (game.phase === "flight" && game.burning === 2) return 2;
+  return 1;
+}
+
+// distance from the rocket's base to the nozzle of the active stage
+function nozzleDistance() {
+  if (activeStage() === 1) return 0;
+  var geo = rocketGeometry(game.design.controls);
+  return 14 + geo.h1 + 8;
+}
+
+function emitExhaust(dt) {
+  if (!game.design || !flameOn()) return;
+
+  var intensity = (game.phase === "countdown") ? 0.4 : 1;
+  game.smokeAcc += dt * 90 * intensity;
+
+  var tilt = currentTilt();
+  var up = nozzleDistance();
+  var x = ROCKET_X + game.drift + up * Math.sin(tilt);
+  var y = rocketBaseY() - up * Math.cos(tilt);
+  var low = game.altPx < 150;
+
+  while (game.smokeAcc >= 1) {
+    game.smokeAcc -= 1;
+    if (game.smoke.length > 450) break;
+    var p;
+    if (low) {
+      // on the pad the exhaust spreads sideways along the ground
+      p = { x: x + rand(-10, 10), y: y + rand(-4, 6), vx: rand(-1, 1) * rand(60, 200), vy: rand(-15, 25),
+            life: 1.7, maxLife: 1.7, size: rand(7, 12), grow: 28 };
+    } else {
+      p = { x: x + rand(-4, 4), y: y + 8, vx: -Math.sin(tilt) * rand(60, 150) + rand(-20, 20),
+            vy: Math.cos(tilt) * rand(60, 150), life: 1.0, maxLife: 1.0, size: rand(4, 7), grow: 14 };
+    }
+    game.smoke.push(p);
+  }
+}
+
+function spawnExplosion(x, y) {
+  var colors = ["#ffd166", "#ff9f1c", "#ef476f", "#d9d9d9", "#fff3b0"];
+  for (var i = 0; i < 90; i++) {
+    var angle = rand(0, Math.PI * 2);
+    var speed = rand(40, 360);
+    game.sparks.push({
+      x: x, y: y - 20, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 120,
+      life: rand(0.6, 1.6), maxLife: 1.6, size: rand(2, 6), color: colors[i % colors.length]
+    });
+  }
+}
+
+function spawnConfetti() {
+  var colors = ["#ffd166", "#06d6a0", "#ef476f", "#118ab2", "#ffffff"];
+  for (var i = 0; i < 90; i++) {
+    game.confetti.push({
+      x: rand(0, W), y: rand(-300, 0), vx: rand(-30, 30), vy: rand(60, 160),
+      rot: rand(0, 6.28), vr: rand(-5, 5), w: rand(5, 9), h: rand(8, 14), color: colors[i % colors.length]
+    });
+  }
+}
+
+function updateParticles(dt) {
+  var cameraShift = (game.altPx > 220) ? game.altSpeed : 0;   // the "camera" follows the rocket
+
+  for (var i = game.smoke.length - 1; i >= 0; i--) {
+    var s = game.smoke[i];
+    s.x += s.vx * dt;
+    s.y += (s.vy + cameraShift) * dt;
+    s.size += s.grow * dt;
+    s.life -= dt;
+    if (s.life <= 0) game.smoke.splice(i, 1);
+  }
+  for (var k = game.sparks.length - 1; k >= 0; k--) {
+    var sp = game.sparks[k];
+    sp.vy += 450 * dt;
+    sp.x += sp.vx * dt;
+    sp.y += sp.vy * dt;
+    sp.life -= dt;
+    if (sp.life <= 0) game.sparks.splice(k, 1);
+  }
+  for (var m = game.confetti.length - 1; m >= 0; m--) {
+    var c = game.confetti[m];
+    c.x += c.vx * dt;
+    c.y += c.vy * dt;
+    c.rot += c.vr * dt;
+    if (c.y > H + 20) game.confetti.splice(m, 1);
+  }
+}
+
+// =====================================================================
+// 7. DRAWING THE SCENE
+// =====================================================================
+function drawSky() {
+  var f = clamp(game.altPx / 2400, 0, 1);       // 0 = ground level, 1 = deep space
+  var gradient = ctx.createLinearGradient(0, 0, 0, H);
+  gradient.addColorStop(0, mixColor([46, 124, 214], [2, 3, 12], f));
+  gradient.addColorStop(1, mixColor([188, 228, 250], [4, 6, 20], f));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawStars() {
+  var visible = clamp((game.altPx - 1200) / 1200, 0, 1);
+  if (visible <= 0) return;
+  for (var i = 0; i < stars.length; i++) {
+    var s = stars[i];
+    var twinkle = 0.55 + 0.45 * Math.sin(game.clock * s.speed + s.phase);
+    ctx.globalAlpha = visible * twinkle;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawSun() {
+  var f = clamp(game.altPx / 2000, 0, 1);
+  if (f >= 1) return;
+  var y = 100 + game.altPx * 0.25;
+  var glow = ctx.createRadialGradient(150, y, 10, 150, y, 90);
+  glow.addColorStop(0, "rgba(255, 244, 190, " + (0.9 * (1 - f)) + ")");
+  glow.addColorStop(1, "rgba(255, 244, 190, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(40, y - 110, 220, 220);
+  ctx.globalAlpha = 1 - f;
+  ctx.fillStyle = "#fff6c8";
+  ctx.beginPath();
+  ctx.arc(150, y, 34, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawClouds() {
+  var alpha = (1 - clamp((game.altPx - 700) / 900, 0, 1)) * 0.9;
+  if (alpha <= 0) return;
+  ctx.fillStyle = "rgba(255, 255, 255, " + alpha + ")";
+  for (var i = 0; i < clouds.length; i++) {
+    var c = clouds[i];
+    var span = H + 200;
+    var y = (((c.y + game.altPx * c.speed) % span) + span) % span - 100;
+    var x = c.x, s = c.size;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 60 * s, 20 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x - 35 * s, y + 6 * s, 38 * s, 15 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 38 * s, y + 7 * s, 40 * s, 14 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawEarthLimb() {
+  var visible = clamp((game.altPx - 1500) / 800, 0, 1);
+  if (visible <= 0) return;
+  var q = beyondOrbitProgress();
+  var rise = clamp((game.altPx - 1800) / 1200, 0, 1) * 80;
+  var topY = H - 40 - rise + q * 260;
+  var radius = 1500;
+  ctx.globalAlpha = visible;
+  var gradient = ctx.createRadialGradient(W / 2, topY + radius, radius * 0.9, W / 2, topY + radius, radius);
+  gradient.addColorStop(0, "#0f3d80");
+  gradient.addColorStop(1, "#2a7fd1");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(W / 2, topY + radius, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(140, 210, 255, 0.7)";   // thin glowing atmosphere
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// 0 while the rocket is still climbing to orbit, up to 1 when it reaches the destination
+function beyondOrbitProgress() {
+  if (game.dv <= ORBIT_DV) return 0;
+  var needed = TARGETS[game.targetIndex].needed;
+  if (needed <= ORBIT_DV) return 0;
+  return clamp((game.dv - ORBIT_DV) / (needed - ORBIT_DV), 0, 1);
+}
+
+function drawDestination() {
+  if (game.targetIndex === 0) return;
+  var q = beyondOrbitProgress();
+  if (q <= 0) return;
+
+  var cx = 710;
+  var cy = -90 + q * 230;
+  var r = 20 + q * 80;
+
+  if (game.targetIndex === 1) {
+    // THE MOON
+    var moon = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    moon.addColorStop(0, "#f0f0f0");
+    moon.addColorStop(1, "#8d8d96");
+    ctx.fillStyle = moon;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(90, 90, 100, 0.35)";
+    var craters = [[-0.4, -0.2, 0.22], [0.3, 0.3, 0.18], [0.1, -0.5, 0.12], [-0.2, 0.5, 0.14], [0.55, -0.1, 0.1]];
+    for (var i = 0; i < craters.length; i++) {
+      ctx.beginPath();
+      ctx.arc(cx + craters[i][0] * r, cy + craters[i][1] * r, craters[i][2] * r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // MARS
+    var mars = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    mars.addColorStop(0, "#f2a074");
+    mars.addColorStop(1, "#a8441f");
+    ctx.fillStyle = mars;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(90, 30, 10, 0.4)";
+    ctx.beginPath(); ctx.ellipse(cx - r * 0.2, cy + r * 0.1, r * 0.45, r * 0.18, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + r * 0.35, cy - r * 0.25, r * 0.22, r * 0.12, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";    // polar ice cap
+    ctx.beginPath(); ctx.ellipse(cx, cy - r * 0.92, r * 0.28, r * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  if (q > 0.25) {
+    drawText(TARGETS[game.targetIndex].short.toUpperCase(), cx, cy + r + 22, 15, "#cfd8f5", "center", "bold");
+  }
+}
+
+// ground, hills, launch pad and tower (they sink out of view as the rocket climbs)
+function drawGround() {
+  var shift = Math.max(0, game.altPx - 220);
+  if (shift > 330) return;
+  ctx.save();
+  ctx.translate(0, shift);
+
+  // far hills
+  ctx.fillStyle = "#4f7f5a";
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(0, GROUND_Y - 40);
+  ctx.quadraticCurveTo(160, GROUND_Y - 95, 320, GROUND_Y - 35);
+  ctx.quadraticCurveTo(520, GROUND_Y - 80, 700, GROUND_Y - 30);
+  ctx.quadraticCurveTo(840, GROUND_Y - 70, W, GROUND_Y - 38);
+  ctx.lineTo(W, GROUND_Y);
+  ctx.closePath();
+  ctx.fill();
+
+  // grass
+  ctx.fillStyle = "#3d6b3f";
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y + 400);
+
+  // launch pad
+  ctx.fillStyle = "#8a8f9c";
+  ctx.fillRect(ROCKET_X - 75, GROUND_Y, 150, 10);
+  ctx.fillStyle = "#5d6270";
+  ctx.fillRect(ROCKET_X - 75, GROUND_Y + 10, 150, 6);
+
+  // launch tower
+  var tx = ROCKET_X - 118;
+  ctx.fillStyle = "#4b5468";
+  ctx.fillRect(tx, GROUND_Y - 250, 18, 250);
+  ctx.strokeStyle = "#7d879f";
+  ctx.lineWidth = 2;
+  for (var y = GROUND_Y; y > GROUND_Y - 250; y -= 36) {
+    ctx.beginPath(); ctx.moveTo(tx, y); ctx.lineTo(tx + 18, y - 36); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx + 18, y); ctx.lineTo(tx, y - 36); ctx.stroke();
+  }
+  ctx.fillStyle = "#e63946";                      // blinking light
+  if (Math.floor(game.clock * 2) % 2 === 0) {
+    ctx.beginPath(); ctx.arc(tx + 9, GROUND_Y - 256, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  if (game.phase === "build" || game.phase === "countdown") {
+    ctx.strokeStyle = "#9aa5b8";                  // service arms hold the rocket until liftoff
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(tx + 18, GROUND_Y - 150); ctx.lineTo(ROCKET_X - 22, GROUND_Y - 150); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx + 18, GROUND_Y - 220); ctx.lineTo(ROCKET_X - 16, GROUND_Y - 220); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ---------- the rocket ----------
+function rocketGeometry(c) {
+  return {
+    w1: 38,
+    h1: 40 + c.fuel1 * 0.13,        // stage 1 gets taller with more fuel
+    w2: 26,
+    h2: 28 + c.fuel2 * 0.2,
+    hc: 22 + c.payload * 0.4        // nose cone / payload size
+  };
+}
+
+function drawFlame(cx, y, width, length) {
+  var gradient = ctx.createLinearGradient(0, y, 0, y + length);
+  gradient.addColorStop(0, "#fff6c8");
+  gradient.addColorStop(0.35, "#ffb02e");
+  gradient.addColorStop(1, "rgba(255, 80, 0, 0)");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(cx - width / 2, y);
+  ctx.lineTo(cx + width / 2, y);
+  ctx.lineTo(cx, y + length);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawStage1(geo, controls, withFlame) {
+  var top = -(14 + geo.h1);
+  var half = geo.w1 / 2;
+
+  // fins
+  ctx.fillStyle = "#c0392b";
+  ctx.beginPath();
+  ctx.moveTo(-half, -14 - 34); ctx.lineTo(-half - 15, -12); ctx.lineTo(-half, -18);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(half, -14 - 34); ctx.lineTo(half + 15, -12); ctx.lineTo(half, -18);
+  ctx.closePath(); ctx.fill();
+
+  // engine nozzles
+  var n = controls.count1;
+  var slot = (geo.w1 - 8) / n;
+  var nozzleW = Math.max(2, Math.min(9, slot - 1));
+  for (var i = 0; i < n; i++) {
+    var cx = -half + 4 + slot * (i + 0.5);
+    ctx.fillStyle = controls.engine1.color;
+    ctx.beginPath();
+    ctx.moveTo(cx - nozzleW * 0.3, -14); ctx.lineTo(cx + nozzleW * 0.3, -14);
+    ctx.lineTo(cx + nozzleW * 0.5, 0);   ctx.lineTo(cx - nozzleW * 0.5, 0);
+    ctx.closePath(); ctx.fill();
+    if (withFlame) {
+      var length = (24 + controls.engine1.thrust / 80) * rand(0.85, 1.15);
+      drawFlame(cx, 0, Math.max(3, nozzleW * 1.3), length);
+    }
+  }
+
+  // body
+  ctx.fillStyle = "#f1f3f8";
+  ctx.fillRect(-half, top, geo.w1, geo.h1);
+  ctx.fillStyle = "#2b3350";                       // dark band
+  ctx.fillRect(-half, top + geo.h1 * 0.12, geo.w1, 8);
+  ctx.fillStyle = "#d3d8e6";                       // shading on one side
+  ctx.fillRect(half - 9, top, 9, geo.h1);
+  ctx.strokeStyle = "#b3bbd0";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-half, top, geo.w1, geo.h1);
+}
+
+function drawUpperRocket(geo, controls, withFlame) {
+  var y1top = -(14 + geo.h1);
+  var y2bottom = y1top - 8;
+  var y2top = y2bottom - geo.h2;
+
+  // stage 2 nozzles
+  var n2 = Math.min(controls.count2, 4);
+  for (var i = 0; i < n2; i++) {
+    var cx = (i - (n2 - 1) / 2) * 6;
+    ctx.fillStyle = controls.engine2.color;
+    ctx.beginPath();
+    ctx.moveTo(cx - 1.5, y2bottom); ctx.lineTo(cx + 1.5, y2bottom);
+    ctx.lineTo(cx + 3, y2bottom + 8); ctx.lineTo(cx - 3, y2bottom + 8);
+    ctx.closePath(); ctx.fill();
+    if (withFlame) {
+      drawFlame(cx, y2bottom + 8, 6, (16 + controls.engine2.thrust / 18) * rand(0.85, 1.15));
+    }
+  }
+
+  // interstage (narrows from stage 1 width to stage 2 width)
+  ctx.fillStyle = "#9aa3ba";
+  ctx.beginPath();
+  ctx.moveTo(-geo.w1 / 2, y1top); ctx.lineTo(geo.w1 / 2, y1top);
+  ctx.lineTo(geo.w2 / 2, y2bottom); ctx.lineTo(-geo.w2 / 2, y2bottom);
+  ctx.closePath(); ctx.fill();
+
+  // stage 2 body
+  ctx.fillStyle = "#dfe4ee";
+  ctx.fillRect(-geo.w2 / 2, y2top, geo.w2, geo.h2);
+  ctx.fillStyle = "#2b3350";
+  ctx.fillRect(-geo.w2 / 2, y2top + 6, geo.w2, 5);
+  ctx.fillStyle = "#c4cadb";
+  ctx.fillRect(geo.w2 / 2 - 7, y2top, 7, geo.h2);
+
+  // nose cone with the payload
+  ctx.fillStyle = "#e74c3c";
+  ctx.beginPath();
+  ctx.moveTo(-geo.w2 / 2, y2top);
+  ctx.quadraticCurveTo(-geo.w2 / 2, y2top - geo.hc * 0.8, 0, y2top - geo.hc);
+  ctx.quadraticCurveTo(geo.w2 / 2, y2top - geo.hc * 0.8, geo.w2 / 2, y2top);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#8fd8ff";                       // window
+  ctx.beginPath(); ctx.arc(0, y2top - 7, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#2b3350"; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function drawRocketScene() {
+  var controls = game.design.controls;
+  var geo = rocketGeometry(controls);
+
+  // hide the rocket after it crashes
+  if (game.outcome === "crash" && game.crashed) return;
+
+  var tilt = currentTilt();
+  var x = ROCKET_X + game.drift;
+  var y = rocketBaseY();
+
+  var shake = 0;
+  if (game.phase === "countdown" && game.timer > COUNTDOWN_SECONDS - 1.2) shake = 1.2;
+  if (game.phase === "flight" && game.altPx < 120) shake = 2;
+  if (game.phase === "result" && game.outcome === "noliftoff" && game.timer < 2.5) shake = 3;
+
+  ctx.save();
+  ctx.translate(x + rand(-shake, shake), y + rand(-shake, shake) * 0.5);
+  ctx.rotate(tilt);
+
+  var flames = flameOn();
+  if (!game.separated) {
+    drawStage1(geo, controls, flames);
+    drawUpperRocket(geo, controls, false);
+  } else {
+    drawUpperRocket(geo, controls, flames && activeStage() === 2);
+  }
+  ctx.restore();
+}
+
+function drawDebris() {
+  if (!game.debris || !game.design) return;
+  var d = game.debris;
+  var geo = rocketGeometry(game.design.controls);
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  ctx.rotate(d.tilt + d.angle);
+  drawStage1(geo, game.design.controls, false);
+  ctx.restore();
+}
+
+function drawSmoke() {
+  for (var i = 0; i < game.smoke.length; i++) {
+    var s = game.smoke[i];
+    var a = clamp(s.life / s.maxLife, 0, 1) * 0.45;
+    ctx.fillStyle = "rgba(235, 235, 240, " + a + ")";
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawSparks() {
+  for (var i = 0; i < game.sparks.length; i++) {
+    var s = game.sparks[i];
+    ctx.globalAlpha = clamp(s.life / s.maxLife, 0, 1);
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // brief white flash at the moment of impact
+  if (game.crashed && game.timer - game.crashTime < 0.2) {
+    ctx.fillStyle = "rgba(255, 240, 200, " + (1 - (game.timer - game.crashTime) / 0.2) * 0.8 + ")";
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawConfetti() {
+  for (var i = 0; i < game.confetti.length; i++) {
+    var c = game.confetti[i];
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    ctx.fillStyle = c.color;
+    ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+    ctx.restore();
+  }
+}
+
+function drawSeparationFlash() {
+  if (game.flashT <= 0 || !game.debris) return;
+  var t = game.flashT / 0.35;
+  var x = ROCKET_X + game.drift;
+  var y = rocketBaseY() - 60;
+  ctx.fillStyle = "rgba(255, 255, 255, " + (t * 0.8) + ")";
+  ctx.beginPath();
+  ctx.arc(x, y, 20 + (1 - t) * 50, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// =====================================================================
+// 8. HUD AND MESSAGES
+// =====================================================================
+function drawText(str, x, y, size, color, align, weight) {
+  ctx.font = (weight || "normal") + " " + size + "px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = color;
+  ctx.textAlign = align || "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(str, x, y);
+}
+
+function drawChip(str, x, y, color) {
+  ctx.font = "bold 14px Arial, Helvetica, sans-serif";
+  var w = ctx.measureText(str).width + 24;
+  ctx.fillStyle = "rgba(5, 8, 20, 0.7)";
+  ctx.fillRect(x, y, w, 28);
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 4, 28);
+  drawText(str, x + 14, y + 19, 14, "#ffffff", "left", "bold");
+}
+
+function drawHud() {
+  var target = TARGETS[game.targetIndex];
+
+  if (game.phase === "build") {
+    drawChip("MISSION: " + target.name + "  (needs " + formatNumber(target.needed) + " m/s)", 14, 14, "#06d6a0");
+    drawText("Design your rocket below, then press LAUNCH", W / 2, H - 14, 15, "rgba(255,255,255,0.85)", "center", "bold");
+    return;
+  }
+
+  if (game.phase === "countdown") {
+    var remaining = Math.ceil(COUNTDOWN_SECONDS - game.timer - 0.6);
+    var text = remaining >= 1 ? String(remaining) : "LIFTOFF!";
+    if (game.timer < 0.6) text = "3";
+    drawText(text, W / 2 + 170, 190, 90, "rgba(255, 255, 255, 0.92)", "center", "bold");
+    drawChip("MISSION: " + target.name, 14, 14, "#06d6a0");
+    return;
+  }
+
+  // flight and result: status chips and progress bar
+  drawChip(game.label || "FLIGHT", 14, 14, "#ffd166");
+  if (game.phase === "flight") {
+    drawChip("T+ " + game.timer.toFixed(1) + " s", W - 120, 14, "#8fb7c9");
+  }
+
+  var needed = target.needed;
+  var barX = 20, barY = H - 40, barW = 520, barH = 16;
+  ctx.fillStyle = "rgba(5, 8, 20, 0.7)";
+  ctx.fillRect(barX - 10, barY - 34, barW + 20, 62);
+  drawText("Delta-v: " + formatNumber(game.dv) + " m/s", barX, barY - 12, 15, "#ffffff", "left", "bold");
+  drawText("Target: " + target.short + " " + formatNumber(needed) + " m/s", barX + barW, barY - 12, 15, "#ffd166", "right", "bold");
+  ctx.fillStyle = "#1c2644";
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = (game.dv >= needed) ? "#06d6a0" : "#4cc9f0";
+  ctx.fillRect(barX, barY, barW * clamp(game.dv / needed, 0, 1), barH);
+  // tick for orbit
+  var orbitX = barX + barW * (ORBIT_DV / needed);
+  if (needed > ORBIT_DV) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(orbitX - 1, barY - 4, 2, barH + 8);
+    drawText("orbit", orbitX, barY + barH + 14, 11, "#9fb0d8", "center", "normal");
+  }
+}
+
+function overlayAlpha() {
+  if (game.phase !== "result") return 0;
+  var start;
+  if (game.outcome === "crash") start = game.crashed ? game.crashTime + 1.2 : 9999;
+  else if (game.outcome === "noliftoff") start = 2.6;
+  else start = 1.8;
+  return clamp((game.timer - start) / 0.6, 0, 1);
+}
+
+function drawOverlay() {
+  var a = overlayAlpha();
+  if (a <= 0) return;
+
+  var target = TARGETS[game.targetIndex];
+  var design = game.design;
+  var title, color, lines;
+
+  if (game.outcome === "success") {
+    title = "MISSION SUCCESS!";
+    color = "#06d6a0";
+    lines = ["Your rocket reached " + target.name + ".",
+             "Delta-v: " + formatNumber(design.total) + " m/s  (needed " + formatNumber(target.needed) + ")",
+             "Try a harder target, or a lighter and cheaper design!"];
+  } else if (game.outcome === "orbit") {
+    title = "STUCK IN ORBIT";
+    color = "#ffd166";
+    lines = ["You reached Earth orbit, but " + target.name + " is too far.",
+             "Delta-v: " + formatNumber(design.total) + " m/s  (needed " + formatNumber(target.needed) + ")",
+             "Add fuel, a better engine, or reduce the payload."];
+  } else if (game.outcome === "crash") {
+    title = "MISSION FAILED";
+    color = "#ef476f";
+    lines = ["The rocket ran out of fuel before reaching orbit and fell back.",
+             "Delta-v: " + formatNumber(design.total) + " m/s  (orbit needs " + formatNumber(ORBIT_DV) + ")",
+             "Add fuel, a better engine, or reduce the payload."];
+  } else {
+    title = "NO LIFTOFF";
+    color = "#ef476f";
+    lines = ["The engines are too weak to lift the rocket.",
+             "Thrust-to-weight is " + design.twr.toFixed(2) + " (it must be above 1).",
+             "Add more engines or use less fuel in stage 1."];
+  }
+
+  // The message box sits on the left so the rocket and the destination stay visible.
+  var boxX = 24, boxY = 64, boxW = 400;
+  var textX = boxX + 20, maxTextWidth = boxW - 40;
+
+  // wrap each line so long sentences fit inside the box
+  ctx.font = "normal 15px Arial, Helvetica, sans-serif";
+  var body = [];   // each entry: { text, color }
+  for (var i = 0; i < lines.length; i++) {
+    var pieces = wrapText(lines[i], maxTextWidth);
+    for (var p = 0; p < pieces.length; p++) {
+      body.push({ text: pieces[p], color: (i === 1) ? "#ffd166" : "#dfe6fa" });
+    }
+  }
+  var boxH = 70 + body.length * 22 + 34;
+
+  ctx.globalAlpha = a;
+  ctx.fillStyle = "rgba(4, 7, 18, 0.85)";
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+  drawText(title, textX, boxY + 46, 30, color, "left", "bold");
+  for (var j = 0; j < body.length; j++) {
+    drawText(body[j].text, textX, boxY + 78 + j * 22, 15, body[j].color, "left", "normal");
+  }
+  drawText("Press REDESIGN to try again", textX, boxY + boxH - 14, 13, "#8f9bbd", "left", "normal");
+  ctx.globalAlpha = 1;
+}
+
+// splits a sentence into lines no wider than maxWidth (uses the current canvas font)
+function wrapText(str, maxWidth) {
+  var words = str.split(" ");
+  var result = [];
+  var line = "";
+  for (var i = 0; i < words.length; i++) {
+    var test = line ? line + " " + words[i] : words[i];
+    if (ctx.measureText(test).width > maxWidth && line) {
+      result.push(line);
+      line = words[i];
+    } else {
+      line = test;
+    }
+  }
+  if (line) result.push(line);
+  return result;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  drawStars();
+  drawSun();
+  drawEarthLimb();
+  drawDestination();
+  drawClouds();
+  drawGround();
+  drawDebris();
+  drawSmoke();
+  drawRocketScene();
+  drawSparks();
+  drawConfetti();
+  drawSeparationFlash();
+  drawHud();
+  drawOverlay();
+}
+
+// =====================================================================
+// 9. THE PANEL BELOW THE SCREEN (sliders, buttons, design check)
+// =====================================================================
+function fillEngineMenus() {
+  for (var i = 0; i < ENGINES.length; i++) {
+    el("engine1").add(new Option(ENGINES[i].name, i));
+    el("engine2").add(new Option(ENGINES[i].name, i));
+  }
+  el("engine1").value = 1;   // Raptor
+  el("engine2").value = 3;   // RL10
+}
+
+function updatePanel() {
+  var c = readControls();
+  var d = computeDesign(c);
+
+  el("count1Label").textContent  = c.count1;
+  el("count2Label").textContent  = c.count2;
+  el("fuel1Label").textContent   = c.fuel1;
+  el("fuel2Label").textContent   = c.fuel2;
+  el("payloadLabel").textContent = c.payload;
+
+  el("sLiftoff").textContent = d.liftoffMass.toFixed(1);
+  el("sDv1").textContent     = formatNumber(d.stage1.deltaV);
+  el("sDv2").textContent     = formatNumber(d.stage2.deltaV);
+  el("sTotal").textContent   = formatNumber(d.total);
+
+  var twrBox = el("sTwr");
+  twrBox.textContent = d.twr.toFixed(2) + (d.twr > 1 ? "  OK" : "  TOO LOW");
+  twrBox.className = d.twr > 1 ? "good" : "bad";
+
+  var reach = "nothing yet";
+  if (d.twr <= 1) reach = "(can't lift off)";
+  else {
+    for (var i = 0; i < TARGETS.length; i++) {
+      if (d.total >= TARGETS[i].needed) reach = TARGETS[i].short;
+    }
+  }
+  var reachBox = el("sReach");
+  reachBox.textContent = reach;
+  reachBox.className = (reach === "nothing yet" || reach === "(can't lift off)") ? "bad" : "good";
+}
+
+var CONTROL_IDS = ["engine1", "engine2", "count1", "count2", "fuel1", "fuel2", "payload"];
+
+function setControlsEnabled(enabled) {
+  for (var i = 0; i < CONTROL_IDS.length; i++) el(CONTROL_IDS[i]).disabled = !enabled;
+  var buttons = document.querySelectorAll(".targetBtn");
+  for (var j = 0; j < buttons.length; j++) buttons[j].disabled = !enabled;
+}
+
+function updateButtons() {
+  var launch = el("launchBtn");
+  if (game.phase === "build") {
+    launch.textContent = "LAUNCH";
+    launch.disabled = false;
+  } else if (game.phase === "result") {
+    launch.textContent = "REDESIGN";
+    launch.disabled = false;
+  } else {
+    launch.textContent = "FLYING...";
+    launch.disabled = true;
+  }
+}
+
+function selectTarget(index) {
+  game.targetIndex = index;
+  var buttons = document.querySelectorAll(".targetBtn");
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle("active", Number(buttons[i].getAttribute("data-index")) === index);
+  }
+}
+
+function onLaunchClicked() {
+  if (game.phase === "build") startLaunch();
+  else if (game.phase === "result") backToDesign();
+}
+
+// =====================================================================
+// 10. START THE GAME
+// =====================================================================
+fillEngineMenus();
+for (var ci = 0; ci < CONTROL_IDS.length; ci++) {
+  el(CONTROL_IDS[ci]).addEventListener("input", updatePanel);
+}
+var targetButtons = document.querySelectorAll(".targetBtn");
+for (var ti = 0; ti < targetButtons.length; ti++) {
+  (function (button) {
+    button.addEventListener("click", function () { selectTarget(Number(button.getAttribute("data-index"))); });
+  })(targetButtons[ti]);
+}
+el("launchBtn").addEventListener("click", onLaunchClicked);
+
+game.design = computeDesign(readControls());
+updatePanel();
+updateButtons();
+
+// The result phase also needs the button to switch to REDESIGN, so check each frame
+var lastButtonPhase = "";
+var lastTime = null;
+function frame(now) {
+  if (lastTime === null) lastTime = now;
+  var dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  update(dt);
+  draw();
+
+  if (game.phase !== lastButtonPhase) {
+    lastButtonPhase = game.phase;
+    updateButtons();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
